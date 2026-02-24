@@ -1,62 +1,57 @@
 let observer = null;
 
-// Cache references to hidden elements so we don't re-query the DOM repeatedly
-let cachedSidebar = null;
-let cachedLeftNav = null;
-let cachedProfile = null;
-let cachedPrimary = null;
+
+let styleInjected = false;
+
+function injectStyles() {
+  if (styleInjected) return;
+  const style = document.createElement('style');
+  style.id = 'x-focus-mode';
+  style.textContent = `
+    /* Hide left nav */
+    header[role="banner"] { display: none !important; }
+
+    /* Hide right sidebar */
+    [data-testid="sidebarColumn"] { display: none !important; }
+
+    /* Center and widen the content wrapper */
+    main > div:has([data-testid="primaryColumn"]) {
+      margin: 0 auto !important;
+      max-width: 1200px !important;
+      width: 1200px !important;
+    }
+
+    /* Also widen primaryColumn itself which has its own internal constraints */
+    [data-testid="primaryColumn"] {
+      max-width: 1200px !important;
+      width: 100% !important;
+    }
+  `;
+  document.head.appendChild(style);
+  styleInjected = true;
+}
+
+function removeStyles() {
+  const style = document.getElementById('x-focus-mode');
+  if (style) style.remove();
+  styleInjected = false;
+}
 
 function applyFocusMode() {
-  const isArticle = document.querySelector('[data-testid="twitterArticleReadView"]');
-  if (!isArticle) return; // Not an article page — leave layout untouched
-
-  // Use cached references where possible, fall back to querying if not found yet
-  const primary = cachedPrimary || document.querySelector('[data-testid="primaryColumn"]');
-  if (!primary) return; // DOM not ready yet — observer will retry
-  cachedPrimary = primary;
-
-  // Hide right sidebar
-  const sidebar = cachedSidebar || document.querySelector('[data-testid="sidebarColumn"]');
-  if (sidebar) {
-    sidebar.style.display = 'none';
-    cachedSidebar = sidebar;
+  if (!document.querySelector('[data-testid="twitterArticleReadView"]')) {
+    removeStyles(); // Not an article — clean up if we injected previously
+    return;
   }
 
-  // Hide left nav column — walk 2 levels up from Post button
-  if (!cachedLeftNav) {
-    const postButton = document.querySelector('[data-testid="SideNav_NewTweet_Button"]');
-    if (postButton) {
-      cachedLeftNav = postButton.parentElement?.parentElement;
-    }
-  }
-  if (cachedLeftNav) cachedLeftNav.style.display = 'none';
+  injectStyles();
 
-  // Hide profile/account switcher button
-  const profileButton = cachedProfile || document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
-  if (profileButton) {
-    profileButton.style.display = 'none';
-    cachedProfile = profileButton;
-  }
-
-  // Expand center column to fill the space
-  primary.style.maxWidth = '100%';
-  primary.style.flex = '1';
-
-  // Only disconnect once all elements are successfully hidden
-  const allHidden = cachedSidebar && cachedLeftNav && cachedProfile;
-  if (allHidden && observer) {
+  // Disconnect observer once styles are injected
+  if (styleInjected && observer) {
     observer.disconnect();
     observer = null;
   }
 }
 
-// Reset cache on navigation so we re-query fresh elements for the new page
-function resetCache() {
-  cachedSidebar = null;
-  cachedLeftNav = null;
-  cachedProfile = null;
-  cachedPrimary = null;
-}
 
 // Debounce: only call applyFocusMode at most once every 100ms
 function debounce(fn, delay) {
@@ -86,7 +81,6 @@ function onNavigate() {
     observer.disconnect();
     observer = null;
   }
-  resetCache();
   startObserver();
   // Try immediately first, then let observer handle if DOM isn't ready yet
   applyFocusMode();
